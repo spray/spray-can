@@ -33,7 +33,7 @@ import HttpProtocols._
  */
 case class Connect(host: String, port: Int = 80)
 
-object HttpClient extends HighLevelHttpClient {
+object HttpClient extends HttpDialogComponent {
   private[can] class RequestMark // a unique object used to mark all parts of one chunked request
   private[can] case class Send(
     conn: ClientConnection,
@@ -242,6 +242,10 @@ class HttpClient(val config: ClientConfig = ClientConfig.fromAkkaConf) extends H
   }
 
   override protected def cleanClose(conn: Conn) {
+    conn.messageParser match {
+      case x: ToCloseBodyParser => handleCompleteMessage(conn, x.complete)
+      case _ =>
+    }
     conn.closeAllPendingWithError("Server closed connection")
     super.cleanClose(conn)
   }

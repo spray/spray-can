@@ -191,7 +191,7 @@ case class ClientConfig(
   parserConfig: MessageParserConfig = MessageParserConfig()
 ) extends PeerConfig {
 
-  require(!clientActorId.isEmpty, "serverActorId must not be empty")
+  require(!clientActorId.isEmpty, "clientActorId must not be empty")
 
   override def toString =
     "ClientConfig(\n" +
@@ -212,11 +212,11 @@ object ClientConfig {
     userAgentHeader = config.getString("spray-can.client.user-agent-header", "spray-can/" + SprayCanVersion),
 
     // PeerConfig
-    readBufferSize = config.getInt("spray-can.server.read-buffer-size", 8192),
-    idleTimeout    = config.getLong("spray-can.server.idle-timeout", 10000),
-    reapingCycle   = config.getLong("spray-can.server.reaping-cycle", 500),
-    requestTimeout = config.getLong("spray-can.server.request-timeout", 5000),
-    timeoutCycle   = config.getLong("spray-can.server.timeout-cycle", 200),
+    readBufferSize = config.getInt("spray-can.client.read-buffer-size", 8192),
+    idleTimeout    = config.getLong("spray-can.client.idle-timeout", 10000),
+    reapingCycle   = config.getLong("spray-can.client.reaping-cycle", 500),
+    requestTimeout = config.getLong("spray-can.client.request-timeout", 5000),
+    timeoutCycle   = config.getLong("spray-can.client.timeout-cycle", 200),
     parserConfig   = MessageParserConfig.fromAkkaConf
   )
 }
