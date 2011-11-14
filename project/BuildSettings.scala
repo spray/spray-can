@@ -5,16 +5,18 @@ object BuildSettings {
 
   lazy val basicSettings = Defaults.defaultSettings ++ Seq(
     organization  := "cc.spray.can",
-    version       := "0.9.1",
+    version       := "0.9.2-SNAPSHOT",
     scalaVersion  := "2.9.1",
     scalacOptions := Seq("-deprecation", "-encoding", "utf8"),
+    description   := "low-overhead, high-performance, fully asynchronous HTTP 1.1 server and client " +
+                     "library implemented entirely in Scala on top of Akka",
     resolvers     ++= Dependencies.resolutionRepos
   )
 
   lazy val moduleSettings = basicSettings ++ Seq(
     // write the project version to a resource file
     resourceGenerators in Compile <+= (version, resourceManaged) map { (v, dir) =>
-      val file = dir / "version"
+      val file = dir / "spray-can.version"
       IO.writeLines(file, List(v))
       Seq(file)
     },
@@ -36,11 +38,8 @@ object BuildSettings {
       }
     },
     pomExtra := (
-      <name>spray-can</name>
       <url>http://spray.cc/</url>
       <inceptionYear>2011</inceptionYear>
-      <description>a low-overhead, high-performance, fully asynchronous HTTP 1.1 server and client library
-        implemented entirely in Scala on top of Akka</description>
       <licenses>
         <license>
           <name>Apache 2</name>
