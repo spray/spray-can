@@ -22,9 +22,10 @@ import java.io.IOException
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import annotation.tailrec
-import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ActorRef, Actor, PoisonPill}
 import HttpProtocols._
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
+import akka.dispatch.{CompletableFuture, DefaultCompletableFuture, Future}
 
 /////////////////////////////////////////////
 // HttpServer messages
@@ -77,6 +78,11 @@ trait RequestResponder {
    * response chunks before calling the `ChunkedResponder`s `close` method to finalize the response.
    */
   def startChunkedResponse(response: HttpResponse): ChunkedResponder
+
+  /**
+   * Explicitly resets the connection idle timeout for the connection underlying this chunked response.
+   */
+  def resetConnectionTimeout()
 }
 
 /**
@@ -86,9 +92,11 @@ trait RequestResponder {
  */
 trait ChunkedResponder {
   /**
-   * Send the given [[cc.spray.can.MessageChunk]] back to the client.
+   * Sends the given [[cc.spray.can.MessageChunk]] back to the client and returns a Future that is completed when the
+   * chunk has actually and successfully been dispatched to the network layer. Should the client prematurely close
+   * the connection the future is completed with a [[cc.spray.can.ClientClosedConnectionException]]
    */
-  def sendChunk(chunk: MessageChunk)
+  def sendChunk(chunk: MessageChunk): Future[Unit]
 
   /**
    * Finalizes the chunked (streaming) response.
@@ -107,8 +115,10 @@ object HttpServer {
     val closeAfterWrite: Boolean,
     val responseNr: Int,
     val increaseResponseNr: Boolean = true,
-    val requestRecord: RequestRecord = null) {
+    val requestRecord: Option[RequestRecord] = None,
+    val onSent: Option[CompletableFuture[Unit]] = None) {
     var next: Respond = _
+    def toList: List[Respond] = this :: (if (next != null) next.toList else Nil)
   }
   private[can] case class RequestRecord(method: HttpMethod, uri: String, protocol: HttpProtocol,
                                         headers: List[HttpHeader], remoteAddress: InetAddress,
@@ -219,10 +229,18 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
   protected override def receive = super.receive orElse {
     case respond: Respond => {
       import respond._
-      if (conn.writeBuffers.isEmpty && conn.responseNr == responseNr) {
-        // we can only prepare the next write if we are not already writing and it's the right response
-        prepareWriting(respond)
-      } else conn.enqueue(respond)
+      if (conn.key.isValid) {
+        if (conn.writeBuffers.isEmpty && conn.responseNr == responseNr) {
+          // we can only prepare the next write if we are not already writing and it's the right response
+          prepareWriting(respond)
+        } else conn.enqueue(respond)
+      } else {
+        log.warn("Dropping %s due to closed connection".format(if (respond.increaseResponseNr) "response" else "chunk"))
+        respond.onSent.foreach(_.completeWithException(new ClientClosedConnectionException))
+        requestRecord.foreach { rec =>
+          rec.memberOf -= rec // remove from either the openRequests or the openTimeouts list
+        }
+      }
     }
   }
 
@@ -241,18 +259,18 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
 
   protected def prepareWriting(respond: Respond) {
     import respond._
-    if (conn.key.isValid) {
-      log.debug("Received raw response, scheduling write")
-      conn.writeBuffers = buffers
-      conn.currentRespond = respond
-      conn.enableWriting()
-    } else log.warn("Dropping response due to closed connection")
-    if (requestRecord != null)
-      requestRecord.memberOf -= requestRecord // remove from either the openRequests or the openTimeouts list
+    log.debug("Received raw response, scheduling write")
+    conn.writeBuffers = buffers
+    conn.currentRespond = respond
+    conn.enableWriting()
+    requestRecord.foreach { rec =>
+      rec.memberOf -= rec // remove from either the openRequests or the openTimeouts list
+    }
   }
 
   protected def finishWrite(conn: Conn) {
     if (conn.writeBuffers.isEmpty) {
+      conn.currentRespond.onSent.foreach(_.completeWithResult(()))
       if (conn.currentRespond.closeAfterWrite) {
         close(conn)
       } else {
@@ -297,7 +315,7 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
   }
 
   protected def handleChunkedChunk(conn: Conn, parser: ChunkedChunkParser) {
-    conn.chunkingContext.streamActor ! MessageChunk(parser.extensions, parser.body)
+    conn.chunkingContext.streamActor ! MessageChunk(parser.body, parser.extensions)
     conn.messageParser = new ChunkParser(config.parserConfig)
   }
 
@@ -312,12 +330,12 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
 
   private def createAndRegisterRequestResponder(conn: Conn, requestLine: RequestLine, headers: List[HttpHeader],
                                                 remoteAddress: InetAddress, connectionHeader: Option[String]) = {
-    val responder = new DefaultRequestResponder(conn, requestLine, conn.countDispatch(), connectionHeader)
+    var requestRecord: Option[RequestRecord] = None
+    val responder = new DefaultRequestResponder(conn, requestLine, conn.countDispatch(), connectionHeader, requestRecord)
     if (requestTimeoutCycle.isDefined) {
       import requestLine._
-      val requestRecord = RequestRecord(method, uri, protocol, headers, remoteAddress, responder)
-      responder.setRequestRecord(requestRecord)
-      openRequests += requestRecord;
+      requestRecord = Some(RequestRecord(method, uri, protocol, headers, remoteAddress, responder))
+      openRequests += requestRecord.get
     }
     responder
   }
@@ -375,13 +393,13 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
   protected def serverHeader = config.serverHeader
 
   private class DefaultRequestResponder(conn: Conn, requestLine: RequestLine, responseNr: Int,
-                                        connectionHeader: Option[String])
-          extends RequestResponder { original =>
+                                        connectionHeader: Option[String], requestRecord: => Option[RequestRecord])
+    extends RequestResponder {
+
     private val UNCOMPLETED = 0
     private val COMPLETED = 1
     private val STREAMING = 2
     private val mode = new AtomicInteger(UNCOMPLETED)
-    private var requestRecord: RequestRecord = _
 
     def complete(response: HttpResponse) {
       if (!trySend(response)) mode.get match {
@@ -398,7 +416,7 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
       if (mode.compareAndSet(UNCOMPLETED, COMPLETED)) {
         log.debug("Enqueueing valid HttpResponse as raw response")
         val (buffers, close) = prepareResponse(requestLine, response, connectionHeader)
-        self ! new Respond(conn, buffers, close, responseNr, true, requestRecord)
+        self ! new Respond(conn, buffers, close, responseNr, increaseResponseNr = true, requestRecord = requestRecord)
         true
       } else false
     }
@@ -410,11 +428,10 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
       if (mode.compareAndSet(UNCOMPLETED, STREAMING)) {
         log.debug("Enqueueing start of chunked response")
         val (buffers, close) = prepareChunkedResponseStart(requestLine, response, connectionHeader)
-        self ! new Respond(conn, buffers, false, responseNr, false, requestRecord)
-        if (requestLine.method != HttpMethods.HEAD) new DefaultChunkedResponder(close) else new ChunkedResponder {
-          def sendChunk(chunk: MessageChunk) {}
-          def close(extensions: List[ChunkExtension], trailer: List[HttpHeader]) {}
-        }
+        self ! new Respond(conn, buffers, closeAfterWrite = false, responseNr = responseNr,
+          increaseResponseNr = false, requestRecord = requestRecord)
+        if (requestLine.method == HttpMethods.HEAD) sys.error("Cannot respond to a HEAD request with a chunked response")
+        new DefaultChunkedResponder(close, response.body.length > 0)
       } else throw new IllegalStateException {
         mode.get match {
           case COMPLETED => "The chunked response cannot be started since this request to '" + requestLine.uri + "' has already been completed"
@@ -424,22 +441,31 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
     }
 
     lazy val timeoutResponder: HttpResponse => Unit = { response =>
-      if (original.trySend(response)) requestsTimedOut += 1
+      if (trySend(response)) requestsTimedOut += 1
     }
 
-    def setRequestRecord(record: RequestRecord) { requestRecord = record }
+    def resetConnectionTimeout() { self ! RefreshConnection(conn) }
 
-    class DefaultChunkedResponder(closeAfterLastChunk: Boolean)
-            extends ChunkedResponder {
+    class DefaultChunkedResponder(closeAfterLastChunk: Boolean, initialChunkSent: Boolean) extends ChunkedResponder {
       private var closed = false
-      def sendChunk(chunk: MessageChunk) {
+
+      def sendChunk(chunk: MessageChunk) = {
         synchronized {
           if (!closed) {
             log.debug("Enqueueing response chunk")
-            self ! new Respond(conn, prepareChunk(chunk.extensions, chunk.body), false, responseNr, false)
+            val sentFuture = new DefaultCompletableFuture[Unit](Long.MaxValue)
+            self ! new Respond(conn,
+              buffers = prepareChunk(chunk.extensions, chunk.body),
+              closeAfterWrite = false,
+              responseNr = responseNr,
+              increaseResponseNr = false,
+              onSent = Some(sentFuture)
+            )
+            sentFuture
           } else throw new RuntimeException("Cannot send MessageChunk after HTTP stream has been closed")
         }
       }
+
       def close(extensions: List[ChunkExtension], trailer: List[HttpHeader]) {
         Trailer.verify(trailer)
         synchronized {
@@ -454,3 +480,5 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
     }
   }
 }
+
+class ClientClosedConnectionException extends RuntimeException

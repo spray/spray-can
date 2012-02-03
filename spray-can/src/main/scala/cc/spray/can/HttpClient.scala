@@ -167,7 +167,7 @@ class HttpClient(val config: ClientConfig = ClientConfig.fromAkkaConf) extends H
           def complete(response: AnyRef) {
             log.debug("Completing request with {}", response)
             responder.get.apply(response)
-            openRequests -= requestRecord
+            if (requestRecord.memberOf == openRequests) openRequests -= requestRecord
           }
           def deliverPartialResponse(response: AnyRef) {
             log.debug("Delivering partial response: {}", response)
@@ -223,7 +223,7 @@ class HttpClient(val config: ClientConfig = ClientConfig.fromAkkaConf) extends H
 
   protected def handleChunkedChunk(conn: Conn, parser: ChunkedChunkParser) {
     assert(!conn.pendingResponses.isEmpty)
-    conn.pendingResponses.head.deliverPartialResponse(MessageChunk(parser.extensions, parser.body))
+    conn.pendingResponses.head.deliverPartialResponse(MessageChunk(parser.body, parser.extensions))
     conn.messageParser = new ChunkParser(config.parserConfig)
   }
 
@@ -253,15 +253,23 @@ class HttpClient(val config: ClientConfig = ClientConfig.fromAkkaConf) extends H
   protected def handleTimedOutRequests() {
     openRequests.forAllTimedOut(config.requestTimeout) { requestRecord =>
       import requestRecord._
-      log.warn("{} request to '{}' timed out, closing the connection", request.method, request.uri)
-      conn.closeAllPendingWithError("Request timed out")
-      close(conn)
+      if (conn.key.isValid) {
+        log.warn("{} request to '{}' timed out, closing the connection", request.method, request.uri)
+        conn.closeAllPendingWithError("Request timed out")
+        close(conn)
+      } // else already closed
     }
   }
 
   override protected def reapConnection(conn: Conn) {
     conn.closeAllPendingWithError("Connection closed due to idle timeout")
     super.reapConnection(conn)
+  }
+
+
+  override protected def close(conn: Conn) {
+    conn.closeAllPendingWithError("Unspecified")
+    super.close(conn)
   }
 
   protected def openRequestCount = openRequests.size
@@ -300,8 +308,8 @@ class HttpClient(val config: ClientConfig = ClientConfig.fromAkkaConf) extends H
 
     private def responder(receiver: ActorRef, context: Option[Any]): AnyRef => Unit = {
       context match {
-        case Some(ctx) => receiver ! (_, ctx)
-        case None => receiver ! _
+        case Some(ctx) => response => if (receiver.isRunning) receiver ! (response, ctx)
+        case None => response => if (receiver.isRunning) receiver ! response
       }
     }
 

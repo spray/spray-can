@@ -3,22 +3,26 @@ import sbt._
 object Dependencies {
 
   val resolutionRepos = Seq(
-    "Akka Repository" at "http://akka.io/repository/",
+    "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
     ScalaToolsSnapshots
   )
 
   object V {
-    val akka      = "1.2"
-    val logback   = "0.9.29"
+    val akka      = "1.3"
+    val logback   = "1.0.0"
   }
 
   object Compile {
+    val slf4j         = "org.slf4j"                 %   "slf4j-api"                 % "1.6.4"     % "compile"
     val akkaActor     = "se.scalablesolutions.akka" %   "akka-actor"                % V.akka      % "compile"
-    val slf4j         = "org.slf4j"                 %   "slf4j-api"                 % "1.6.1"     % "compile"
+  }
+
+  object Provided {
+    val akkaActor     = "se.scalablesolutions.akka" %   "akka-actor"                % V.akka      % "provided"
   }
 
   object Test {
-    val specs2        = "org.specs2"                %%  "specs2"                    % "1.6.1"     % "test"
+    val specs2        = "org.specs2"                %%  "specs2"                    % "1.7.1"     % "test"
     val akkaSlf4j     = "se.scalablesolutions.akka" %   "akka-slf4j"                % V.akka      % "test"
     val logback       = "ch.qos.logback"            %   "logback-classic"           % V.logback   % "test"
   }

@@ -74,6 +74,7 @@ private[can] abstract class HttpPeer(threadName: String) extends Actor {
   private lazy val log = LoggerFactory.getLogger(getClass)
 
   private[can] type Conn >: Null <: Connection[Conn]
+  private[can] case class RefreshConnection(conn: Conn)
   protected def config: PeerConfig
 
   protected val readBuffer = ByteBuffer.allocateDirect(config.readBufferSize)
@@ -120,6 +121,7 @@ private[can] abstract class HttpPeer(threadName: String) extends Actor {
     case Select => select()
     case HandleTimedOutRequests => handleTimedOutRequests()
     case ReapIdleConnections => connections.forAllTimedOut(config.idleTimeout)(reapConnection)
+    case RefreshConnection(conn) => connections.refresh(conn)
     case GetStats => self.reply(stats)
   }
 
@@ -167,8 +169,7 @@ private[can] abstract class HttpPeer(threadName: String) extends Actor {
         readBuffer.flip()
         log.debug("Read {} bytes", readBuffer.limit())
         parseReadBuffer()
-        if (conn.memberOf == connections) // otherwise the conn has been closed during parser handling
-          connections.refresh(conn)
+        connections.refresh(conn)
       } else cleanClose(conn) // if the peer shut down the socket cleanly, we do the same
     }
   }
@@ -228,7 +229,7 @@ private[can] abstract class HttpPeer(threadName: String) extends Actor {
     try {
       Right(body)
     } catch {
-      case e: IOException => { // probably the peer forcibly closed the connection
+      case e => { // probably the peer forcibly closed the connection
         val error = e.toString
         if (conn != null) {
           log.warn("{} error: closing connection due to {}", operation, error)

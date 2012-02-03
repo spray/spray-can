@@ -39,7 +39,7 @@ class RequestParserSpec extends Specification {
              |Host: example.com
              |
              |"""
-        } mustEqual (GET, "/", `HTTP/1.1`, List(HttpHeader("Host", "example.com")), None, "")
+        } mustEqual (GET, "/", `HTTP/1.1`, List(HttpHeader("host", "example.com")), None, "")
       }
 
       "with 4 headers and a body" in {
@@ -48,14 +48,14 @@ class RequestParserSpec extends Specification {
              |User-Agent: curl/7.19.7 xyz
              |Transfer-Encoding:identity
              |Connection:close
-             |Content-Length    : 17
+             |Content-length    : 17
              |
              |Shake your BOODY!"""
         } mustEqual (POST, "/resource/yes", `HTTP/1.0`, List(
-          HttpHeader("Content-Length", "17"),
-          HttpHeader("Connection", "close"),
-          HttpHeader("Transfer-Encoding", "identity"),
-          HttpHeader("User-Agent", "curl/7.19.7 xyz")
+          HttpHeader("content-length", "17"),
+          HttpHeader("connection", "close"),
+          HttpHeader("transfer-encoding", "identity"),
+          HttpHeader("user-agent", "curl/7.19.7 xyz")
         ), Some("close"), "Shake your BOODY!")
       }
 
@@ -71,9 +71,9 @@ class RequestParserSpec extends Specification {
              |
              |"""
         } mustEqual (DELETE, "/abc", `HTTP/1.1`, List(
-          HttpHeader("Host", "example.com"),
-          HttpHeader("Accept", "*/*"),
-          HttpHeader("User-Agent", "curl/7.19.7 abc xyz")
+          HttpHeader("host", "example.com"),
+          HttpHeader("accept", "*/*"),
+          HttpHeader("user-agent", "curl/7.19.7 abc xyz")
         ), None, "")
       }
     }
@@ -91,7 +91,7 @@ class RequestParserSpec extends Specification {
              |"""
         } mustEqual ChunkedStartParser(
           RequestLine(PUT, "/data", `HTTP/1.1`),
-          List(HttpHeader("Host", "ping"), HttpHeader("Connection", "lalelu"), HttpHeader("Transfer-Encoding", "chunked")),
+          List(HttpHeader("host", "ping"), HttpHeader("connection", "lalelu"), HttpHeader("transfer-encoding", "chunked")),
           Some("lalelu")
         )
       }
@@ -122,7 +122,7 @@ class RequestParserSpec extends Specification {
              |"""
         } mustEqual (
           List(ChunkExtension("nice", "true")),
-          List(HttpHeader("Bar", "xyz"), HttpHeader("Foo", "pip apo"))
+          List(HttpHeader("bar", "xyz"), HttpHeader("foo", "pip apo"))
         )
       }
     }
@@ -135,7 +135,7 @@ class RequestParserSpec extends Specification {
 
       "an URI longer than 2048 chars" in {
         parse()("GET x" + "xxxx" * 512 + " HTTP/1.1") mustEqual
-                ErrorParser("URIs with more than 2048 characters are not supported", 414)
+                ErrorParser("URI length exceeds the configured limit of 2048 characters", 414)
       }
 
       "HTTP version 1.2" in {
@@ -153,14 +153,14 @@ class RequestParserSpec extends Specification {
         parse() {
           """|GET / HTTP/1.1
              |UserxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxAgent: curl/7.19.7"""
-        } mustEqual ErrorParser("HTTP headers with names longer than 64 characters are not supported")
+        } mustEqual ErrorParser("HTTP header name exceeds the configured limit of 64 characters (userxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...)")
       }
 
       "with a header-value longer than 8192 chars" in {
         parse() {
           """|GET / HTTP/1.1
              |Fancy: 0""" + ("12345678" * 1024) + "\r\n"
-        } mustEqual ErrorParser("HTTP header values longer than 8192 characters are not supported (header 'Fancy')", 400)
+        } mustEqual ErrorParser("HTTP header value exceeds the configured limit of 8192 characters (header 'fancy')", 400)
       }
 
       "with an invalid Content-Length header value" in {
