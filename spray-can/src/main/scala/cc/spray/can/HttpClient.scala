@@ -184,7 +184,7 @@ class HttpClient(val config: ClientConfig = ClientConfig.fromAkkaConf) extends H
       conn.writeBuffers = buffers
       conn.enableWriting()
     } else {
-      send.responder.map(_(new HttpClientException("Cannot send request due to closed connection")))
+      send.responder.foreach(_(new HttpClientException("Cannot send request due to closed connection")))
     }
   }
 
