@@ -9,7 +9,7 @@ Both, the _spray-can_ server and the _spray-can_ client, sport the following fea
 * Full support for message pipelining
 * Full support for asynchronous HTTP streaming (i.e. "chunked" transfer encoding)
 * Akka-Actor and -Future based architecture for easy integration into your Akka applications
-* No dependencies except for JavaSE 6, Scala 2.9 and [Akka] 1.3 (actors module).
+* No dependencies except for JavaSE 6, Scala 2.9 and [Akka] 1.3.1 (actors module, in 'provided' scope).
 
 
 ## Basic Architecture & Design Philosophy
@@ -39,11 +39,11 @@ the box.
 ### Installation
 
 _spray-can_ is available from the [repo.spray.cc] repository.
-The latest release is `0.9.2` and is built against Scala 2.9.1 and Akka 1.3.
+The latest release is `0.9.3` and is built against Scala 2.9.1 and Akka 1.3.1.
 
 If you use SBT you can include _spray-can_ in your project with
 
-    "cc.spray" %%  "spray-can" % "0.9.2"
+    "cc.spray" %%  "spray-can" % "0.9.3"
 
 Apart from Scala, Akka and SLF4J _spray-can_ has no dependencies.
 
