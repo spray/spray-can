@@ -56,16 +56,16 @@ private[can] class LinkedList[Elem >: Null <: LinkedList.Element[Elem]] {
   }
 
   def -= (rec: Elem) {
-    require(rec.list == this, "Cannot remove an element that is not part of this list")
-    if (rec == last) {
-      if (rec == first) {
+    require(rec.list eq this, "Cannot remove an element that is not part of this list")
+    if (rec eq last) {
+      if (rec eq first) {
         first = null
         last = null
       } else {
         last = rec.prev
         last.next = null
       }
-    } else if (rec == first) {
+    } else if (rec eq first) {
       first = rec.next
       first.prev = null
     } else {
