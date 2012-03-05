@@ -1,0 +1,2 @@
+This release fixes a problem that can cause AssertionErrors and/or NPEs when using the _spray-can_ HttpClient
+with pipelined request dispatching.

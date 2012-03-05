@@ -1,3 +1,8 @@
+Version 0.9.3 (2012-03-05)
+--------------------------
+- Fixed bug causing AssertionErrors/NPEs in HttpClient and some scenarios using pipelined request dispatch
+
+
 Version 0.9.2 (2012-02-03)
 --------------------------
 - Changed group id to 'cc.spray', publishing to http://repo.spray.cc
