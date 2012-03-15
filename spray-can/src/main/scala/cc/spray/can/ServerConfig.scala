@@ -31,6 +31,11 @@ trait PeerConfig {
   def readBufferSize: Int
 
   /**
+   * Determines whether the TCP_NODELAY flag will be set on all connections (client and server)
+   */
+  def tcpNoDelay: Option[Boolean]
+
+  /**
    * The time period in milliseconds that an open HTTP connection has to be idle before automatically being closed.
    * Set to zero to disable connection timeouts.
    *
@@ -114,6 +119,7 @@ case class ServerConfig(
 
   // PeerConfig
   readBufferSize: Int = 8192,
+  tcpNoDelay: Option[Boolean] = None,
   idleTimeout: Long = 10000,
   reapingCycle: Long = 500,
   requestTimeout: Long = 5000,
@@ -161,6 +167,7 @@ object ServerConfig {
 
     // PeerConfig
     readBufferSize = config.getInt("spray-can.server.read-buffer-size", 8192),
+    tcpNoDelay     = config.getBoolean("spray-can.server.tcp-no-delay"),
     idleTimeout    = config.getLong("spray-can.server.idle-timeout", 10000),
     reapingCycle   = config.getLong("spray-can.server.reaping-cycle", 500),
     requestTimeout = config.getLong("spray-can.server.request-timeout", 5000),
@@ -184,6 +191,7 @@ case class ClientConfig(
 
   // PeerConfig
   readBufferSize: Int = 8192,
+  tcpNoDelay: Option[Boolean] = None,
   idleTimeout: Long = 10000,
   reapingCycle: Long = 500,
   requestTimeout: Long = 5000,
@@ -213,6 +221,7 @@ object ClientConfig {
 
     // PeerConfig
     readBufferSize = config.getInt("spray-can.client.read-buffer-size", 8192),
+    tcpNoDelay     = config.getBoolean("spray-can.client.tcp-no-delay"),
     idleTimeout    = config.getLong("spray-can.client.idle-timeout", 10000),
     reapingCycle   = config.getLong("spray-can.client.reaping-cycle", 500),
     requestTimeout = config.getLong("spray-can.client.request-timeout", 5000),

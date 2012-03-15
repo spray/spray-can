@@ -113,6 +113,7 @@ class HttpClient(val config: ClientConfig = ClientConfig.fromAkkaConf) extends H
     log.debug("Initiating new connection to {}", address)
     protectIO("Init connect") {
       val socketChannel = SocketChannel.open()
+      config.tcpNoDelay.foreach(socketChannel.socket setTcpNoDelay _)
       socketChannel.configureBlocking(false)
       if (socketChannel.connect(address)) {
         log.debug("New connection immediately established")

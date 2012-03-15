@@ -249,6 +249,7 @@ class HttpServer(val config: ServerConfig = ServerConfig.fromAkkaConf)
       log.debug("Accepting new connection")
       protectIO("Accept") {
         val socketChannel = serverSocketChannel.accept
+        config.tcpNoDelay.foreach(socketChannel.socket setTcpNoDelay _)
         socketChannel.configureBlocking(false)
         val key = socketChannel.register(selector, SelectionKey.OP_READ) // start out only reading
         connections += new ServerConnection(key, StartRequestParser)
