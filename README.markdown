@@ -1,3 +1,10 @@
+## Deprecation Note
+
+This repository contains the sources of an older version of *spray-can* (targeted at Scala 2.9.x and Akka 1.3.x).
+If you are looking for the latest version please turn to the main spray site at http://spray.io.
+
+---
+
 _spray-can_ is a low-overhead, high-performance, fully asynchronous HTTP 1.1 server and client library
 implemented entirely in [Scala] on top of [Akka].
 
